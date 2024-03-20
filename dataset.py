@@ -1,10 +1,11 @@
 from config import *
-# from utlis import *
 from utilities import (
-    get_data_wave, encode_impl, impute_impl, Imputer, normalize_impl,
-    Normalizer, feature_select_impl, calculate_metrics, print_metrics)
+    get_data_wave, encode_impl, Imputer, encode_imputer_filename, load_or_create_imputer,
+    Normalizer, normalize_impl, encode_fselector_filename, feature_select_impl,
+    calculate_metrics, print_metrics)
 
 import gc
+import pickle
 import itertools
 import numpy as np
 import pandas as pd
@@ -12,10 +13,11 @@ from sklearn.model_selection import train_test_split, KFold
 
 
 class ClassificationDataset:
-    def __init__(self, internal, external, encode_method, impute_method, fs_method, fs_ratio, norm_method, random_state=42, test_ratio=0.2, n_split=5) -> None:
+    def __init__(self, internal, external, encode_method, impute_method, fs_method, fs_ratio, norm_method, random_state=42, test_ratio=0.2, n_split=5, cached=True) -> None:
         self.random_state = random_state
         self.test_ratio = test_ratio
         self.split = n_split
+        self.cached = cached
 
         self.internal = internal
         self.external = external
@@ -92,13 +94,26 @@ class ClassificationDataset:
 
     def impute(self, encoded_data_dict):
         X_train, y_train = encoded_data_dict['train']
-        imputer: Imputer = impute_impl(X_train, y_train, self.impute_method)
 
-        imputed_data_dict = {}
-        for split, (X, y) in encoded_data_dict.items():
-            X_imputed = imputer.transform(X)
-            X_imputed = pd.DataFrame(X_imputed, columns=X_train.columns)
-            imputed_data_dict[split] = (X_imputed, y)
+        filename = encode_imputer_filename(
+            self.encode_method, self.impute_method) if self.cached else None
+        imputer, data_cached = load_or_create_imputer(
+            X_train, y_train, self.impute_method, filename)
+
+        if data_cached:
+            # Load cached data for knn imputation method to avoid slow inference
+            with open(filename, 'rb') as fp:
+                imputed_data_dict = pickle.load(fp)
+        else:
+            imputer: Imputer
+            imputed_data_dict = {}
+            for split, (X, y) in encoded_data_dict.items():
+                X_imputed = imputer.transform(X)
+                X_imputed = pd.DataFrame(X_imputed, columns=X_train.columns)
+                imputed_data_dict[split] = (X_imputed, y)
+            if data_cached:
+                with open(filename, 'wb') as fp:
+                    pickle.dump(imputed_data_dict, fp)
 
         return imputed_data_dict
 
@@ -134,8 +149,18 @@ class ClassificationDataset:
         X_train, y_train = self.tot_data_dict['train']
         tot_columns = X_train.columns
 
-        support = feature_select_impl(
-            X_train.values, y_train.values, self.fs_method, self.sel_n_features)
+        filename = encode_fselector_filename(
+            self.encode_method, self.impute_method, self.fs_method, self.sel_n_features) if self.cached else None
+        if filename and os.path.exists(filename):
+            with open(filename, 'rb') as f:
+                support = pickle.load(f)
+        else:
+            support = feature_select_impl(
+                X_train.values, y_train.values, self.fs_method, self.sel_n_features)
+            if self.cached:
+                with open(filename, 'wb') as f:
+                    pickle.dump(support, f)
+        support: np.ndarray[bool]
 
         # Select columns based on feature selection support
         sel_columns = tot_columns[support]
@@ -224,7 +249,7 @@ class ClassificationDataset:
             f"    Train: {fs_features_train},\n"
             f"    Internal Test: {fs_features_intest},\n"
             f"    External Test: {fs_features_extest}\n"
-            f"    Selected Features = {self.sel_n_features}/{self.tot_n_features}\n"
+            f"    Selected Features: {self.sel_n_features}/{self.tot_n_features}\n"
             "  )"
         )
 

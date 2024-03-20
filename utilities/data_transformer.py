@@ -13,3 +13,7 @@ class DataTransformer(ABC):
     @abstractmethod
     def transform(self, X):
         pass
+
+
+# if __name__ == "__main__":
+#     DataTransformer()

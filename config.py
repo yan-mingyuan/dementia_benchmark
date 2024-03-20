@@ -20,3 +20,8 @@ PROXY_DEM_COLS = [
 ]
 
 SEED = 42
+
+CHECKPOINTS_DIR = 'checkpoints'
+IMPUTERS_DIR = os.path.join(CHECKPOINTS_DIR, 'imputers')
+FSELECTORS_DIR = os.path.join(CHECKPOINTS_DIR, 'fselectors')
+PREDICTORS_DIR = os.path.join(CHECKPOINTS_DIR, 'predictors')
