@@ -153,15 +153,16 @@ class ClassificationDataset:
             self.encode_method, self.impute_method, self.fs_method, self.sel_n_features) if self.cached else None
         if filename and os.path.exists(filename):
             with open(filename, 'rb') as f:
-                support = pickle.load(f)
+                selector = pickle.load(f)
         else:
-            support = feature_select_impl(
+            selector = feature_select_impl(
                 X_train.values, y_train.values, self.fs_method, self.sel_n_features)
             if self.cached:
                 with open(filename, 'wb') as f:
-                    pickle.dump(support, f)
-        support: np.ndarray[bool]
+                    pickle.dump(selector, f)
 
+        # boolean array of shape [# input features]
+        support: np.ndarray[bool] = selector.get_support()
         # Select columns based on feature selection support
         sel_columns = tot_columns[support]
 

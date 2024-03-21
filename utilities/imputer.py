@@ -4,7 +4,6 @@ from config import *
 
 import re
 import pickle
-# import pandas as pd
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import (
@@ -99,10 +98,10 @@ def _train_iterative_imputer(X, method, filename=None) -> Imputer:
         "dt": DecisionTreeRegressor(random_state=SEED),
         "svm": SVR(kernel='rbf'),
         "lsvm": LinearSVR(random_state=SEED, dual='auto', max_iter=1000),
-        # Kernel crashed while executing code
-        # "rf": RandomForestRegressor(random_state=SEED, n_jobs=-1, n_estimators=30),
+        # Kernel crashed while executing code when n_estimators >= 20
+        "rf": RandomForestRegressor(random_state=SEED, n_jobs=-1, n_estimators=10),
         # "ada": AdaBoostRegressor(DecisionTreeRegressor(random_state=SEED), random_state=SEED),
-        "bagdt": BaggingRegressor(DecisionTreeRegressor(random_state=SEED), random_state=SEED, n_jobs=-1),
+        "bagdt": BaggingRegressor(DecisionTreeRegressor(random_state=SEED), random_state=SEED, n_jobs=-1, n_estimators=10),
         # "gbm": GradientBoostingRegressor(random_state=SEED),
         "histgbm": HistGradientBoostingRegressor(random_state=SEED),
         "xgbm": XGBRegressor(random_state=SEED, n_jobs=-1),  # add weights
