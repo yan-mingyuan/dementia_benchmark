@@ -2,7 +2,7 @@ from config import *
 from utilities import (
     get_data_wave, encode_impl, Imputer, encode_imputer_filename, load_or_create_imputer,
     Normalizer, normalize_impl, encode_fselector_filename, feature_select_impl,
-    calculate_metrics, print_metrics)
+    get_model_name, encode_predictor_filename, calculate_metrics, print_metrics)
 
 import gc
 import pickle
@@ -185,37 +185,58 @@ class ClassificationDataset:
             yield (X_train, y_train, X_val, y_val)
 
     def perform_grid_search(self, model_fn, param_grid_list, verbose=True):
-        best_metrics = [-np.inf] * 3
-        best_params = None
-        best_model = None
-        for param_grid in param_grid_list:
-            keys = param_grid.keys()
-            for vals in itertools.product(*param_grid.values()):
-                params = dict(zip(keys, vals))
-                metrics_lst = []
-                for X_train, y_train, X_val, y_val in self.fold_generator():
-                    # Train
-                    model = model_fn(**params)
-                    model.fit(X_train, y_train)
-
-                    # Evaluate
-                    preds = model.predict(X_val)
-                    metrics = calculate_metrics(y_val, preds)
-                    metrics_lst.append(metrics)
-
-                # Calculate average score
-                metrics_mean = np.mean(metrics_lst, 0)
-
+        model_name = get_model_name(model_fn)
+        print(model_name)
+        filename = encode_predictor_filename(
+            self.encode_method, self.impute_method, self.fs_method, self.sel_n_features, model_name) if self.cached else None
+        if filename and os.path.exists(filename):
+            with open(filename, 'rb') as f:
+                best_metrics, best_params, best_model, cv_results = pickle.load(f)
                 if verbose:
-                    print(
-                        f"model({', '.join([f'{param_name}={param_value}' for param_name, param_value in params.items()])})")
-                    print_metrics(*metrics_mean, valid=True)
+                    for params, metrics_mean in cv_results:
+                        print(f"model({', '.join([f'{param_name}={param_value}' for param_name, param_value in params.items()])})")
+                        print_metrics(*metrics_mean, valid=True)
+        else:
+            best_metrics = [-np.inf] * 3
+            best_params = None
+            best_model = None
+            cv_results = []
+            for param_grid in param_grid_list:
+                keys = param_grid.keys()
+                for vals in itertools.product(*param_grid.values()):
+                    params = dict(zip(keys, vals))
+                    metrics_lst = []
+                    for X_train, y_train, X_val, y_val in self.fold_generator():
+                        # Train
+                        model = model_fn(**params)
+                        model.fit(X_train, y_train)
 
-                # Update best score and parameters if necessary
-                if metrics_mean[0] > best_metrics[0]:
-                    best_metrics = metrics_mean
-                    best_params = params
-                    best_model = model
+                        # Evaluate
+                        # preds = model.predict(X_val)
+                        preds = model.predict_proba(X_val)[:, 1]
+                        metrics = calculate_metrics(y_val, preds)
+                        metrics_lst.append(metrics)
+
+                    # Calculate average score
+                    metrics_mean = np.mean(metrics_lst, 0)
+
+                    if verbose:
+                        print(
+                            f"model({', '.join([f'{param_name}={param_value}' for param_name, param_value in params.items()])})")
+                        print_metrics(*metrics_mean, valid=True)
+
+                    # Update best score and parameters if necessary
+                    if metrics_mean[0] > best_metrics[0]:
+                        best_metrics = metrics_mean
+                        best_params = params
+                        best_model = model
+                    
+                    cv_results.append((params, metrics_mean))
+
+                obj = (best_metrics, best_params, best_model, cv_results)
+                if self.cached:
+                    with open(filename, 'wb') as f:
+                        pickle.dump(obj, f)
 
         print("=======================================================")
         print(
@@ -229,12 +250,12 @@ class ClassificationDataset:
         X_extest, y_extest = self.fs_data_dict['extest']
 
         # Evaluate "internal" test set
-        y_hat_intest = best_model.predict(X_intest)
+        y_hat_intest = best_model.predict_proba(X_intest)[:, 1]
         metrics_intest = calculate_metrics(y_intest, y_hat_intest)
         print_metrics(*metrics_intest, valid=False, internal=True)
 
         # Evaluate "external" test set
-        y_hat_extest = best_model.predict(X_extest)
+        y_hat_extest = best_model.predict_proba(X_extest)[:, 1]
         metrics_extest = calculate_metrics(y_extest, y_hat_extest)
         print_metrics(*metrics_extest, valid=False, internal=False)
 

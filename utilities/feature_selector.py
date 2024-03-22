@@ -2,12 +2,11 @@ from config import *
 
 import os
 from functools import partial
-import numpy as np
 from sklearn.feature_selection import SelectKBest, SelectFromModel
 from sklearn.feature_selection import f_classif, chi2, mutual_info_classif, mutual_info_regression
 from sklearn.linear_model import Lasso
-from sklearn.svm import LinearSVC, LinearSVR
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.svm import LinearSVC
+from sklearn.ensemble import RandomForestClassifier
 
 
 def encode_fselector_filename(encode_method, impute_method, fs_method, sel_n_features):

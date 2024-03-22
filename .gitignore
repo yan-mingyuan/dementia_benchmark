@@ -1,4 +1,5 @@
 __pycache__/
-resources/
 checkpoints/
+resources/
+repositories/
 test/
