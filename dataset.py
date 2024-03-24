@@ -191,10 +191,12 @@ class ClassificationDataset:
             self.encode_method, self.impute_method, self.fs_method, self.sel_n_features, model_name) if self.cached else None
         if filename and os.path.exists(filename):
             with open(filename, 'rb') as f:
-                best_metrics, best_params, best_model, cv_results = pickle.load(f)
+                best_metrics, best_params, best_model, cv_results = pickle.load(
+                    f)
                 if verbose:
                     for params, metrics_mean in cv_results:
-                        print(f"model({', '.join([f'{param_name}={param_value}' for param_name, param_value in params.items()])})")
+                        print(
+                            f"model({', '.join([f'{param_name}={param_value}' for param_name, param_value in params.items()])})")
                         print_metrics(*metrics_mean, valid=True)
         else:
             best_metrics = [-np.inf] * 3
@@ -230,7 +232,7 @@ class ClassificationDataset:
                         best_metrics = metrics_mean
                         best_params = params
                         best_model = model
-                    
+
                     cv_results.append((params, metrics_mean))
 
                 obj = (best_metrics, best_params, best_model, cv_results)

@@ -35,7 +35,7 @@ def encode_imputer_filename(encode_method, impute_method):
 def load_or_create_imputer(X, y=None, method="mode", filename=None):
     data_cached = False
     if method in ['mean', 'median', 'mode']:
-        imputer = _train_simple_imputer(X, imputer)
+        imputer = _train_simple_imputer(X, method)
     elif method.startswith('knn'):
         # Cache for knn-imputed data, as it is time-consuming to inference
         imputer, data_cached = _train_knn_imputer(X, method, filename)
