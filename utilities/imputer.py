@@ -96,7 +96,7 @@ def _train_iterative_imputer(X, method, filename=None) -> Imputer:
         "br": BayesianRidge(),  # default
         'ard': ARDRegression(),
         "dt": DecisionTreeRegressor(random_state=SEED),
-        "svm": SVR(kernel='rbf'),
+        # "svm": SVR(kernel='rbf'),
         "lsvm": LinearSVR(random_state=SEED, dual='auto', max_iter=1000),
         # Kernel crashed while executing code when n_estimators >= 20
         "rf": RandomForestRegressor(random_state=SEED, n_jobs=-1, n_estimators=10),
