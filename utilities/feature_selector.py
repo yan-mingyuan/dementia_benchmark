@@ -1,4 +1,6 @@
 from config import *
+from .base_transformer import FeatureSelector
+from .grad_selector import SelectFromGrad
 
 import os
 from functools import partial
@@ -19,7 +21,7 @@ def encode_fselector_filename(encode_method, impute_method, fs_method, sel_n_fea
     return filename
 
 
-def feature_select_impl(X, y, fs_method, sel_n_features):
+def feature_select_impl(X, y, fs_method, sel_n_features) -> FeatureSelector:
     if fs_method in ['fcls', 'freg', 'chi2', 'micls', 'mireg']:
         score_func_dict = {
             'fcls': f_classif,
@@ -43,6 +45,8 @@ def feature_select_impl(X, y, fs_method, sel_n_features):
         }
         estimator = estimator_dict.get(fs_method)
         selector = SelectFromModel(estimator, max_features=sel_n_features)
+    elif fs_method in ['dnp', 'graces']:
+        selector = SelectFromGrad(fs_method, max_features=sel_n_features)
     else:
         raise NotImplementedError("Unsupported feature selection method")
 

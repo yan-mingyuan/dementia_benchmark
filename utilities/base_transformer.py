@@ -15,5 +15,17 @@ class DataTransformer(ABC):
         pass
 
 
+class FeatureSelector(ABC):
+    def __init__(self) -> None:
+        super().__init__()
+
+    @abstractmethod
+    def fit(self, X, y):
+        pass
+
+    @abstractmethod
+    def get_support(self):
+        pass
+
 # if __name__ == "__main__":
 #     DataTransformer()

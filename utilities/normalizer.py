@@ -1,4 +1,4 @@
-from .data_transformer import DataTransformer
+from .base_transformer import DataTransformer
 
 
 class Normalizer(DataTransformer):
@@ -25,7 +25,7 @@ class ZScoreNormalizer(Normalizer):
         return (X - self.mu) / (self.std + 1e-8)
 
 
-def normalize_impl(X, norm_method):
+def normalize_impl(X, norm_method) -> Normalizer:
     if norm_method == "maxmin":
         normalizer = MaxMinNormalizer(X)
     elif norm_method == "zscore":

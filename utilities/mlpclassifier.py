@@ -1,3 +1,8 @@
+from .nnblocks import MLP
+
+import numpy as np
+from tqdm import tqdm
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -5,68 +10,92 @@ import torch.optim as optim
 
 class MLPClassifier(nn.Module):
     def __init__(
-            self, hidden_layer_sizes=(100,), max_iter=200,
-            weight_decay=1e-4, learning_rate=1e-3, momentum=0.9, nesterovs_momentum=True,
-            batch_size=200, shuffle=True, random_state=42, cuda=True) -> None:
+            self, hidden_layer_sizes, max_iter=50,
+            weight_decay=1e-4, learning_rate=5e-3, momentum=0.9, squares=0.999, optimizer_t='sgdm',
+            use_residual=True, use_batch_norm=False,
+            batch_size=512, shuffle=True, random_state=42, cuda=True) -> None:
         super(MLPClassifier, self).__init__()
 
+        # Model configuration
         self.hidden_layer_sizes = hidden_layer_sizes
+        self.input_size = None
+        self.output_size = 1
+        self.use_residual = use_residual
+        self.use_batch_norm = use_batch_norm
+        self.model = None
+        self.criterion = nn.BCELoss(reduction='mean')
+
+        # Optimizer configuration
         self.max_iter = max_iter
         self.weight_decay = weight_decay
         self.learning_rate = learning_rate
         self.momentum = momentum
-        self.nesterovs_momentum = nesterovs_momentum
+        self.squares = squares
+        self.optimizer_t = optimizer_t
+
+        # Environment configuration
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.random_state = random_state
         self.cuda_ = cuda
 
-        self.model = None
-        self.input_size = None
-        self.output_size = 1
-
     def _build_model(self):
-        layers = []
-        layer_sizes = [self.input_size] + \
-            list(self.hidden_layer_sizes) + [self.output_size]
-        for i in range(len(layer_sizes) - 1):
-            layers.append(nn.Linear(layer_sizes[i], layer_sizes[i+1]))
-            if i < len(layer_sizes) - 2:
-                layers.append(nn.ReLU())
-        layers.append(nn.Sigmoid())
-        self.model = nn.Sequential(*layers)
+        self.model = MLP(self.input_size, self.hidden_layer_sizes,
+                         self.output_size, self.use_residual, self.use_batch_norm)
 
         if self.cuda_:
             self.model = self.model.cuda()
 
     def fit(self, X, y):
-        self.input_size = X.shape[1]
-        self._build_model()
+        if self.random_state is not None:
+            np.random.seed(self.random_state)
+            torch.manual_seed(self.random_state)
+            torch.cuda.manual_seed_all(self.random_state)
 
         X_tensor = torch.tensor(X, dtype=torch.float32)
         y_tensor = torch.tensor(y, dtype=torch.float32)
 
+        self.input_size = X.shape[1]
+        self._build_model()
+
+        # TODO: remove it to avoid out of memory
+        # Keep it when dataset is small to make learning run faster
         if self.cuda_:
             X_tensor = X_tensor.cuda()
             y_tensor = y_tensor.cuda()
 
-        self.criterion = nn.BCELoss(reduction='mean')
-        self.optimizer = optim.SGD(
-            self.model.parameters(), weight_decay=self.weight_decay, 
-            lr=self.learning_rate, momentum=self.momentum, nesterov=self.nesterovs_momentum)
+        match self.optimizer_t:
+            case 'sgdm':
+                self.optimizer = optim.SGD(
+                    self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay,
+                    momentum=self.momentum, nesterov=True)
+            case 'adam':
+                self.optimizer = optim.Adam(
+                    self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay,
+                    betas=(self.momentum, self.squares))
+            case _:
+                raise NotImplementedError(
+                    "Optimizer '{}' not implemented.".format(self.optimizer_t))
 
         dataset = torch.utils.data.TensorDataset(X_tensor, y_tensor)
         loader = torch.utils.data.DataLoader(
             dataset, batch_size=self.batch_size, shuffle=self.shuffle)
 
         self.model.train()
+
         for epoch in range(self.max_iter):
-            for batch_idx, (inputs, targets) in enumerate(loader):
-                self.optimizer.zero_grad()
-                outputs = self.model(inputs).squeeze(1)
-                loss = self.criterion(outputs, targets.float())
-                loss.backward()
-                self.optimizer.step()
+            with tqdm(loader, desc=f"Epoch {epoch+1}/{self.max_iter}", unit="batch", leave=False) as tepoch:
+                for batch_idx, (inputs, targets) in enumerate(tepoch):
+                    # if self.cuda_:
+                    #     inputs = inputs.cuda()
+                    #     targets = targets.cuda()
+
+                    self.optimizer.zero_grad()
+                    outputs = self.model(inputs)
+                    loss = self.criterion(outputs, targets.float())
+                    loss.backward()
+                    self.optimizer.step()
+                    tepoch.set_postfix(loss=loss.item())
 
     def predict_proba(self, X):
         X_tensor = torch.tensor(X, dtype=torch.float32)
@@ -78,7 +107,7 @@ class MLPClassifier(nn.Module):
         with torch.no_grad():
             outputs = self.model(X_tensor)
         outputs = outputs.cpu().numpy()
-        probs = np.concatenate([1 - outputs, outputs], 1)
+        probs = np.stack([1 - outputs, outputs], 1)
         return probs
 
 
@@ -93,7 +122,7 @@ if __name__ == "__main__":
             probs > 0.5, 1.0, 0.0)
         acc = np.mean(preds_categorical == labels)
         return np.array([auc, aupr, acc])
-    
+
     def print_metrics(auc, aupr, acc, valid=False, internal=True):
         if valid:
             print(f"Valid:         ", end='')

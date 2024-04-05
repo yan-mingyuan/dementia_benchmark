@@ -1,4 +1,4 @@
-from .data_transformer import DataTransformer
+from .base_transformer import DataTransformer
 
 from config import *
 

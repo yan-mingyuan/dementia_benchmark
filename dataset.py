@@ -1,7 +1,7 @@
 from config import *
 from utilities import (
     get_data_wave, encode_impl, Imputer, encode_imputer_filename, load_or_create_imputer,
-    Normalizer, normalize_impl, encode_fselector_filename, feature_select_impl,
+    Normalizer, normalize_impl, FeatureSelector, encode_fselector_filename, feature_select_impl,
     get_model_name, encode_predictor_filename, calculate_metrics, print_metrics)
 
 import gc
@@ -151,6 +151,7 @@ class ClassificationDataset:
 
         filename = encode_fselector_filename(
             self.encode_method, self.impute_method, self.fs_method, self.sel_n_features) if self.cached else None
+        selector: FeatureSelector = None
         if filename and os.path.exists(filename):
             with open(filename, 'rb') as f:
                 selector = pickle.load(f)
@@ -235,10 +236,10 @@ class ClassificationDataset:
 
                     cv_results.append((params, metrics_mean))
 
-                obj = (best_metrics, best_params, best_model, cv_results)
-                if self.cached:
-                    with open(filename, 'wb') as f:
-                        pickle.dump(obj, f)
+            obj = (best_metrics, best_params, best_model, cv_results)
+            if self.cached:
+                with open(filename, 'wb') as f:
+                    pickle.dump(obj, f)
 
         print("=======================================================")
         print(

@@ -14,11 +14,15 @@ The Dementia Benchmark project aims to establish a standardized benchmark for de
 - `eval_{enc}_{imp}_{fs}.ipynb`: A Jupyter Notebook containing the main pipeline for model training, hyperparameter tuning, and evaluation. The encode_method, impute_method, and fs_method used are included in the filename.
 
 ## Requirements
-- lightgbm==4.3.0
-- numpy==1.26.4
-- pandas==2.2.1
-- scikit_learn==1.4.1.post1
-- xgboost==2.0.3
+lightgbm==4.3.0
+numpy==1.26.4
+pandas==2.2.1
+scikit_learn==1.4.1.post1
+scipy==1.13.0
+torch==2.0.1
+torch_geometric==2.5.2
+tqdm==4.65.1
+xgboost==2.0.3
 
 ## Setup
 ```bash
