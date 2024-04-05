@@ -23,7 +23,8 @@ class _BasicBlock(nn.Module):
     def forward(self, x):
         out = self.block(self.norm(x))
         return out
-    
+
+
 class _GraphBasicBlock(nn.Module):
     def __init__(self, input_size, output_size, use_batch_norm=True, bias=True):
         super(_GraphBasicBlock, self).__init__()
@@ -51,7 +52,7 @@ class _ResidualBlock(nn.Module):
             self.norm = nn.BatchNorm1d(input_size)
         else:
             self.norm = nn.Identity()
-        
+
         self.block = nn.Sequential(
             nn.Linear(input_size, output_size, bias=bias),
             nn.ReLU(inplace=True),
@@ -73,6 +74,7 @@ class _ResidualBlock(nn.Module):
         out += self.shortcut(residual)
         return out
 
+
 class _GraphResidualBlock(nn.Module):
     def __init__(self, input_size, output_size, use_batch_norm=True, bias=True):
         super(_GraphResidualBlock, self).__init__()
@@ -81,7 +83,7 @@ class _GraphResidualBlock(nn.Module):
             self.norm = nn.BatchNorm1d(input_size)
         else:
             self.norm = nn.Identity()
-        
+
         self.block = gnn.Sequential('x, edge_index', [
             (gnn.SAGEConv(input_size, output_size), 'x, edge_index -> x'),
             nn.ReLU(inplace=True),
@@ -138,6 +140,53 @@ class MLP(nn.Module):
             x = F.relu(hidden(x), inplace=True)
         x = F.sigmoid(self.output(x))
         return x.squeeze(1)
+
+
+class GraphNet(nn.Module):
+    def __init__(self, input_size, hidden_layer_sizes, output_size, alpha=0.95, use_residual=True, use_batch_norm=True):
+        super(GraphNet, self).__init__()
+
+        self.use_residual = use_residual
+        self.use_batch_norm = use_batch_norm
+        if self.use_residual:
+            self.block = _GraphResidualBlock
+        else:
+            self.block = _GraphBasicBlock
+        self.block = functools.partial(
+            self.block, use_batch_norm=self.use_batch_norm)
+
+        self.input_size = input_size
+        self.hidden_layer_sizes = hidden_layer_sizes
+        self.output_size = output_size
+        self.n_hidden = len(self.hidden_layer_sizes) - 1
+
+        self.input = self.block(
+            self.input_size, self.hidden_layer_sizes[0])
+        self.hiddens = nn.ModuleList([
+            self.block(hidden_layer_sizes[h], hidden_layer_sizes[h+1])
+            for h in range(self.n_hidden)
+        ])
+        self.output = self.block(hidden_layer_sizes[-1], output_size)
+        self.alpha = alpha
+
+    def forward(self, x):
+        edge_index = self.create_edge_index(x)
+
+        x = F.relu(self.input(x, edge_index), inplace=True)
+        for hidden in self.hiddens:
+            x = F.relu(hidden(x, edge_index), inplace=True)
+        x = F.sigmoid(self.output(x, edge_index))
+        return x.squeeze(1)
+
+    def create_edge_index(self, x):
+        similarity_matrix = torch.abs(F.cosine_similarity(
+            x[None, :, :], x[:, None, :], dim=-1))
+        similarity = torch.sort(similarity_matrix.view(-1))[0]
+        eps = torch.quantile(similarity, self.alpha, interpolation='nearest')
+        adj_matrix = similarity_matrix >= eps
+        row, col = torch.where(adj_matrix)
+        edge_index = torch.cat((row.reshape(1, -1), col.reshape(1, -1)), dim=0)
+        return edge_index
 
 
 class MLPSelector(nn.Module):

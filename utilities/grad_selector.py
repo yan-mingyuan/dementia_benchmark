@@ -14,7 +14,7 @@ class SelectFromGrad(FeatureSelector):
     def __init__(self, fs_method, max_features, n_dropout=20, dropout_p=0.50, alpha=0.95,
                  hidden_layer_sizes=None, max_iter=5,
                  weight_decay=1e-4, learning_rate=5e-3, momentum=0.0, squares=0.999, optimizer_t='sgdm',
-                 use_residual=True, use_batch_norm=False,
+                 use_residual=None, use_batch_norm=None,
                  batch_size=512, shuffle=True, random_state=42, cuda=True) -> None:
         super().__init__()
 
@@ -36,7 +36,11 @@ class SelectFromGrad(FeatureSelector):
         self.hidden_layer_sizes = hidden_layer_sizes
         self.input_size = None
         self.output_size = 1
+        if use_residual is None:
+            use_residual = True
         self.use_residual = use_residual
+        if use_batch_norm is None:
+            use_batch_norm = (fs_method != 'dnp')
         self.use_batch_norm = use_batch_norm
         self.model = None
         self.criterion = nn.BCELoss(reduction='mean')
@@ -59,16 +63,18 @@ class SelectFromGrad(FeatureSelector):
         self.cuda_ = cuda
 
     def _build_model(self):
+        self.support = np.zeros(self.input_size-1, dtype=bool)
         self.xavier_std = math.sqrt(
             4. / self.input_size + self.hidden_layer_sizes[0])
-        self.support = np.zeros(self.input_size-1, dtype=bool)
 
-        if self.fs_method == "dnp":
+        if self.fs_method == 'dnp':
             self.model = MLPSelector(
                 self.input_size, self.hidden_layer_sizes, self.output_size, self.dropout_p)
-        elif self.fs_method == "graces":
+        elif self.fs_method == 'graces':
             self.model = GraphSelector(
                 self.input_size, self.hidden_layer_sizes, self.output_size, self.dropout_p, self.alpha)
+        else:
+            raise NotImplementedError
 
         if self.cuda_:
             self.model = self.model.cuda()
@@ -171,7 +177,6 @@ class SelectFromGrad(FeatureSelector):
 
                 # Xavier normalization
                 self.model.input.weight[:, new_s].normal_(0, self.xavier_std)
-            # tqdm.write(f"S: {self.S}")
         # print(self.support_indices)
 
         # remove intercept

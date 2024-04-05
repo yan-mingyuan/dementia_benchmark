@@ -1,6 +1,7 @@
 from config import *
 from .base_transformer import FeatureSelector
 from .grad_selector import SelectFromGrad
+from .cancelout_selector import SelectFromCancelOut
 
 import os
 from functools import partial
@@ -45,8 +46,11 @@ def feature_select_impl(X, y, fs_method, sel_n_features) -> FeatureSelector:
         }
         estimator = estimator_dict.get(fs_method)
         selector = SelectFromModel(estimator, max_features=sel_n_features)
-    elif fs_method in ['dnp', 'graces']:
-        selector = SelectFromGrad(fs_method, max_features=sel_n_features)
+    elif fs_method in ['dnp', 'graces', 'cancelout', 'graphout']:
+        if fs_method in ['dnp', 'graces']:
+            selector = SelectFromGrad(fs_method, max_features=sel_n_features)
+        elif fs_method in ['cancelout', 'graphout']:
+            selector = SelectFromCancelOut(fs_method, max_features=sel_n_features)
     else:
         raise NotImplementedError("Unsupported feature selection method")
 
