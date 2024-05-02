@@ -1,5 +1,5 @@
 from .base_transformer import FeatureSelector
-from .nnblocks import MLPSelector, GraphSelector
+from .nnblocks import MLP, GNN
 
 import math
 import numpy as np
@@ -10,11 +10,25 @@ import torch.nn as nn
 import torch.optim as optim
 
 
+class GradSelector(nn.Module):
+    def __init__(self, backbone):
+        super(GradSelector, self).__init__()
+        self.backbone = backbone
+
+        # deactivate input layer's bias
+        self.backbone.input.bias = None
+
+        # multiple dropout
+        self.backbone.multiple_dropout = True
+
+    def forward(self, x):
+        return self.backbone(x)
+
+
 class SelectFromGrad(FeatureSelector):
     def __init__(self, fs_method, max_features, n_dropout=20, dropout_p=0.50, alpha=0.95,
                  hidden_layer_sizes=None, max_iter=5,
                  weight_decay=1e-4, learning_rate=5e-3, momentum=0.0, squares=0.999, optimizer_t='sgdm',
-                 use_residual=None, use_batch_norm=None,
                  batch_size=512, shuffle=True, random_state=42, cuda=True) -> None:
         super().__init__()
 
@@ -36,12 +50,6 @@ class SelectFromGrad(FeatureSelector):
         self.hidden_layer_sizes = hidden_layer_sizes
         self.input_size = None
         self.output_size = 1
-        if use_residual is None:
-            use_residual = True
-        self.use_residual = use_residual
-        if use_batch_norm is None:
-            use_batch_norm = (fs_method != 'dnp')
-        self.use_batch_norm = use_batch_norm
         self.model = None
         self.criterion = nn.BCELoss(reduction='mean')
 
@@ -67,14 +75,15 @@ class SelectFromGrad(FeatureSelector):
         self.xavier_std = math.sqrt(
             4. / self.input_size + self.hidden_layer_sizes[0])
 
-        if self.fs_method == 'dnp':
-            self.model = MLPSelector(
-                self.input_size, self.hidden_layer_sizes, self.output_size, self.dropout_p)
-        elif self.fs_method == 'graces':
-            self.model = GraphSelector(
-                self.input_size, self.hidden_layer_sizes, self.output_size, self.dropout_p, self.alpha)
-        else:
-            raise NotImplementedError
+        match self.fs_method:
+            case 'dnp':
+                backbone = MLP(self.input_size, self.hidden_layer_sizes,
+                               self.output_size, self.dropout_p)
+            case 'graces':
+                backbone = GNN(self.input_size, self.hidden_layer_sizes,
+                               self.output_size, self.dropout_p, self.alpha)
+            case _: raise NotImplementedError
+        self.model = GradSelector(backbone)
 
         if self.cuda_:
             self.model = self.model.cuda()
@@ -118,7 +127,7 @@ class SelectFromGrad(FeatureSelector):
             dataset, batch_size=self.batch_size, shuffle=self.shuffle)
 
         for _ in tqdm(range(self.max_features), desc="Number of Selected Features", leave=True):
-        # for _ in range(self.max_features):
+            # for _ in range(self.max_features):
             self.model.train()
             for epoch in range(self.max_iter):
                 # with tqdm(loader, desc=f"Epoch {epoch+1}/{self.max_iter}", unit="batch", leave=False) as tepoch:
@@ -138,7 +147,7 @@ class SelectFromGrad(FeatureSelector):
                 with torch.no_grad():
                     for s in range(self.input_size):
                         if s not in self.support_indices:
-                            self.model.input.weight[:, s].zero_()
+                            self.model.backbone.input.weight[:, s].zero_()
 
             self.model.eval()
             for _ in range(self.n_dropout):
@@ -153,8 +162,8 @@ class SelectFromGrad(FeatureSelector):
                     loss = self.criterion(outputs, targets.float())
                     loss.backward()
                     # self.optimizer.step()
-            # input_gradient = self.model.input.weight.grad.detach() / self.n_dropout
-            input_gradient = self.model.input.weight.grad.detach()
+            # input_gradient = self.model.backbone.input.weight.grad.detach() / self.n_dropout
+            input_gradient = self.model.backbone.input.weight.grad.detach()
             self.optimizer.zero_grad()
             gradient_norm = input_gradient.norm(p=self.q_norm, dim=0)
             # gradient_norm[self.support_indices] = 0.0
@@ -167,20 +176,20 @@ class SelectFromGrad(FeatureSelector):
                 # for s in range(self.input_size):
                 #     if s == new_s:
                 #         # Xavier normalization
-                #         self.model.input.weight[:, s].normal_(
+                #         self.model.backbone.input.weight[:, s].normal_(
                 #             0, self.xavier_std)
                 #     elif s not in self.S:
                 #         # Remains zero
                 #         # TODO: not necessary because gradients have been cleared after the last epoch
-                #         # self.model.input.weight[:, s].zero_()
+                #         # self.model.backbone.input.weight[:, s].zero_()
                 #         pass
 
                 # Xavier normalization
-                self.model.input.weight[:, new_s].normal_(0, self.xavier_std)
+                self.model.backbone.input.weight[:, new_s].normal_(0, self.xavier_std)
         # print(self.support_indices)
 
         # remove intercept
-        for s in self.support_indices[1:]: 
+        for s in self.support_indices[1:]:
             self.support[s-1] = 1
 
     def get_support(self):

@@ -7,7 +7,7 @@ class DataTransformer(ABC):
         self.fit(X, y)
 
     @abstractmethod
-    def fit(self, X, y=None):
+    def fit(self, X, y=None, *args, **kwargs):
         pass
 
     @abstractmethod

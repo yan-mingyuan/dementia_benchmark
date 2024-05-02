@@ -6,7 +6,7 @@ class Normalizer(DataTransformer):
 
 
 class MaxMinNormalizer(Normalizer):
-    def fit(self, X, y=None):
+    def fit(self, X, y=None, *args, **kwargs):
         self.min_val = X.min()
         self.range_ = X.max() - self.min_val + 1e-8
         return self
@@ -16,7 +16,7 @@ class MaxMinNormalizer(Normalizer):
 
 
 class ZScoreNormalizer(Normalizer):
-    def fit(self, X, y=None):
+    def fit(self, X, y=None, *args, **kwargs):
         self.mu = X.mean()
         self.std = X.std()
         return self

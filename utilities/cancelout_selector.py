@@ -1,5 +1,5 @@
 from .base_transformer import FeatureSelector
-from .nnblocks import MLP, GraphNet
+from .nnblocks import MLP, GNN
 
 import math
 import numpy as np
@@ -23,11 +23,10 @@ class CancelOut(nn.Module):
         return x
 
 
-class SelectFromCancelOut(FeatureSelector):
+class SelectFromOut(FeatureSelector):
     def __init__(self, fs_method, max_features, l1_penalty=1e-3, var_penalty=1e-3,
                  hidden_layer_sizes=None, max_iter=100,
                  weight_decay=1e-4, learning_rate=5e-3, momentum=0.9, squares=0.999, optimizer_t='sgdm',
-                 use_residual=True, use_batch_norm=False,
                  batch_size=512, shuffle=True, random_state=42, cuda=True) -> None:
         super().__init__()
 
@@ -47,12 +46,6 @@ class SelectFromCancelOut(FeatureSelector):
         self.hidden_layer_sizes = hidden_layer_sizes
         self.input_size = None
         self.output_size = 1
-        if use_residual is None:
-            use_residual = True
-        self.use_residual = use_residual
-        if use_batch_norm is None:
-            use_batch_norm = (fs_method != 'cancelout')
-        self.use_batch_norm = use_batch_norm
         self.model = None
         self.criterion = nn.BCELoss(reduction='mean')
 
@@ -73,14 +66,15 @@ class SelectFromCancelOut(FeatureSelector):
     def _build_model(self):
         self.support = np.zeros(self.input_size, dtype=bool)
 
-        if self.fs_method == 'cancelout':
-            backbone = MLP(
-                self.input_size, self.hidden_layer_sizes, self.output_size)
-        elif self.fs_method == 'graphout':
-            backbone = GraphNet(
-                self.input_size, self.hidden_layer_sizes, self.output_size)
-        else:
-            raise NotImplementedError
+        match self.fs_method:
+            case 'cancelout':
+                backbone = MLP(self.input_size,
+                               self.hidden_layer_sizes, self.output_size)
+            case 'graphout':
+                backbone = GNN(self.input_size,
+                               self.hidden_layer_sizes, self.output_size)
+            case _:
+                raise NotImplementedError
         self.model = CancelOut(self.input_size, backbone)
 
         if self.cuda_:
@@ -148,6 +142,7 @@ class SelectFromCancelOut(FeatureSelector):
             descending=True).cpu().numpy()[:self.max_features]
         for s in self.support_indices:
             self.support[s] = 1
+        self.model = self.model.cpu()
 
     def get_support(self):
         return self.support
